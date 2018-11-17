@@ -20,12 +20,12 @@ import os
 # under different settings, using different proportions of the training set.
 # When you are testing, start with 0.2. You need to change it to 1.0 when you make submissions.
 # TODO: Set it to 1.0 when you make submissions
-SAMPLE_PROB = 0.2  # Sample 20% of the whole dataset
+SAMPLE_PROB = 1.0  # Sample 20% of the whole dataset
 random.seed(15619)  # Set the random seed to get deterministic sampling results
 # TODO: update the value using the ID of the GS bucket, WITHOUT "gs://"
 # for example, if the GS path of the bucket is gs://my-bucket
 # the OUTPUT_BUCKET_ID will be "my-bucket"
-OUTPUT_BUCKET_ID = 'YOUR_OUTPUT_BUCKET'
+OUTPUT_BUCKET_ID = 'ml-fare-prediction-222320-p4ml'
 # DO NOT change it
 DATA_BUCKET_ID = 'p42ml'
 # DO NOT change it
@@ -60,6 +60,20 @@ def haversine_distance(origin, destination):
 # =====================================
 # ==== Define data transformations ====
 # =====================================
+hotspots = [[40.7669, 40.7969, -73.8700, -73.8540], # LGA
+            [40.6700, 40.7100, -74.1945, -74.1545], # EWR
+            [40.6150, 40.6650, -73.8323, -73.7381]] # JFK 
+
+jfk = (40.6413, -73.7781)
+ewr = (40.6895, -74.1745)
+lga = (40.7769, -73.8740)
+
+def is_hotspot(lat, lon):
+    for i, hotspot in enumerate(hotspots):
+        if (lat >= hotspot[0] and lat <= hotspot[1] and lon >= hotspot[2] and lon <= hotspot[3]):
+            return i
+    return -1
+
 
 def process_train_data(raw_df):
     """
@@ -68,7 +82,34 @@ def process_train_data(raw_df):
     :param raw_df: the DataFrame of the raw training data
     :return:  a DataFrame with the predictors created
     """
-    return raw_df
+    raw_df['origin'] = raw_df[['pickup_latitude', 'pickup_longitude']].apply(tuple, axis=1)
+    raw_df['destination'] = raw_df[['dropoff_latitude', 'dropoff_longitude']].apply(tuple, axis=1)
+    raw_df['distance'] = raw_df.apply(lambda x: haversine_distance(x['origin'], x['destination']), axis=1)
+    raw_df['raw_datetime'] = pd.to_datetime(raw_df['pickup_datetime'])
+    raw_df['hour'] = raw_df['raw_datetime'].apply(lambda x: x.hour)
+    raw_df['year'] = raw_df['raw_datetime'].apply(lambda x: x.year)
+    
+    raw_df = raw_df.loc[(raw_df['pickup_latitude'] < 45) & (raw_df['pickup_latitude'] > 35)
+                        & (raw_df['pickup_longitude'] < -70) & (raw_df['pickup_longitude'] > -75)
+                        & (raw_df['fare_amount'] < 300) & (raw_df['passenger_count'] < 9)]
+    raw_df['pickup_is_hotspot'] = raw_df.apply(lambda x: is_hotspot(x['pickup_latitude'], x['pickup_longitude']), axis=1)
+    raw_df['dropoff_is_hotspot'] = raw_df.apply(lambda x: is_hotspot(x['dropoff_latitude'], x['dropoff_longitude']), axis=1)
+    raw_df['pickup_JFK_distance'] = raw_df.apply(lambda x: haversine_distance(x['origin'], jfk), axis=1)
+    raw_df['dropoff_JFK_distance'] = raw_df.apply(lambda x: haversine_distance(x['destination'], jfk), axis=1)
+    raw_df['pickup_EWR_distance'] = raw_df.apply(lambda x: haversine_distance(x['origin'], ewr), axis=1)
+    raw_df['dropoff_EWR_distance'] = raw_df.apply(lambda x: haversine_distance(x['destination'], ewr), axis=1)
+    raw_df['pickup_LGA_distance'] = raw_df.apply(lambda x: haversine_distance(x['origin'], lga), axis=1)
+    raw_df['dropoff_LGA_distance'] = raw_df.apply(lambda x: haversine_distance(x['destination'], lga), axis=1)
+    
+    train_df = raw_df[['key', 'pickup_datetime', 'distance', 'hour', 'year', 
+                       'pickup_latitude', 'pickup_longitude', 
+                       'dropoff_latitude', 'dropoff_longitude',
+                       'pickup_is_hotspot', 'dropoff_is_hotspot',
+                       'pickup_JFK_distance', 'dropoff_JFK_distance',
+                       'pickup_EWR_distance', 'dropoff_EWR_distance',
+                       'pickup_LGA_distance', 'dropoff_LGA_distance',
+                       'fare_amount', 'passenger_count']]
+    return train_df
 
 
 def process_test_data(raw_df):
@@ -78,7 +119,31 @@ def process_test_data(raw_df):
     :param raw_df: the DataFrame of the raw test data
     :return: a DataFrame with the predictors created
     """
-    return raw_df
+    raw_df['origin'] = raw_df[['pickup_latitude', 'pickup_longitude']].apply(tuple, axis=1)
+    raw_df['destination'] = raw_df[['dropoff_latitude', 'dropoff_longitude']].apply(tuple, axis=1)
+    raw_df['distance'] = raw_df.apply(lambda x: haversine_distance(x['origin'], x['destination']), axis=1)
+    raw_df['raw_datetime'] = pd.to_datetime(raw_df['pickup_datetime'])
+    raw_df['hour'] = raw_df['raw_datetime'].apply(lambda x: x.hour)
+    raw_df['year'] = raw_df['raw_datetime'].apply(lambda x: x.year)
+
+    raw_df['pickup_is_hotspot'] = raw_df.apply(lambda x: is_hotspot(x['pickup_latitude'], x['pickup_longitude']), axis=1)
+    raw_df['dropoff_is_hotspot'] = raw_df.apply(lambda x: is_hotspot(x['dropoff_latitude'], x['dropoff_longitude']), axis=1)
+    
+    raw_df['pickup_JFK_distance'] = raw_df.apply(lambda x: haversine_distance(x['origin'], jfk), axis=1)
+    raw_df['dropoff_JFK_distance'] = raw_df.apply(lambda x: haversine_distance(x['destination'], jfk), axis=1)
+    raw_df['pickup_EWR_distance'] = raw_df.apply(lambda x: haversine_distance(x['origin'], ewr), axis=1)
+    raw_df['dropoff_EWR_distance'] = raw_df.apply(lambda x: haversine_distance(x['destination'], ewr), axis=1)
+    raw_df['pickup_LGA_distance'] = raw_df.apply(lambda x: haversine_distance(x['origin'], lga), axis=1)
+    raw_df['dropoff_LGA_distance'] = raw_df.apply(lambda x: haversine_distance(x['destination'], lga), axis=1)
+    test_df = raw_df[['key', 'distance', 'hour', 'year', 
+                      'pickup_latitude', 'pickup_longitude',
+                      'dropoff_latitude', 'dropoff_longitude',  
+                      'pickup_is_hotspot', 'dropoff_is_hotspot',
+                      'pickup_JFK_distance', 'dropoff_JFK_distance',
+                      'pickup_EWR_distance', 'dropoff_EWR_distance',
+                      'pickup_LGA_distance', 'dropoff_LGA_distance',
+                      'passenger_count']]
+    return test_df
 
 
 if __name__ == '__main__':
@@ -137,7 +202,7 @@ if __name__ == '__main__':
     # "minValue: 4" and "maxValue: 10" match "default=6"
     parser.add_argument(
         '--max_depth',
-        default=6,
+        default=12,
         type=int
     )
 
@@ -147,12 +212,42 @@ if __name__ == '__main__':
     #     default=...,
     #     type=...
     # )
+    parser.add_argument(
+        '--learning_rate',
+        default=0.3,
+        type=float
+    )
+    parser.add_argument(
+        '--subsample',
+        default=0.7,
+        type=float
+    )
+    parser.add_argument(
+        '--n_estimators',
+        default=500,
+        type=int
+    )
+    parser.add_argument(
+        '--min_split_loss',
+        default=2,
+        type=int
+    )
+    parser.add_argument(
+        '--min_child_weight',
+        default=2,
+        type=int
+    )
 
     args = parser.parse_args()
     params = {
         'max_depth': args.max_depth,
         # TODO: Add the new parameters to this params dict, e.g.,
         # 'param2': args.param2
+        'learning_rate': args.learning_rate,
+        'subsample': args.subsample,
+        'n_estimators': args.n_estimators,
+        'min_split_loss': args.min_split_loss,
+        'min_child_weight': args.min_child_weight,
     }
 
     """

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-PROJECT_ID="<your_project_id>"  # e.g., ml-fare-prediction-xxxxxx
-BUCKET_ID="<your_bucket_id>"    # e.g., my-bucket
+PROJECT_ID="ml-fare-prediction-222320"  # e.g., ml-fare-prediction-xxxxxx
+BUCKET_ID="ml-fare-prediction-222320-p4ml"    # e.g., my-bucket
 # A name should start with a letter and contain only letters, numbers and underscores.
-JOB_NAME="<a_meaningful_job_descriptor>_$(date +"%m%d_%H%M")"
+JOB_NAME="hptune_ml_$(date +"%m%d_%H%M")"
 
 JOB_DIR="gs://${BUCKET_ID}/"
 TRAINING_PACKAGE_PATH="$(pwd)/mle_trainer"

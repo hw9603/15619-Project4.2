@@ -15,5 +15,5 @@ resources:
 
 # TODO: you only need to set the environment variables below
 env_variables:
-  GCP_MLE_MODEL_NAME:
-  GCP_MLE_MODEL_VERSION:
+  GCP_MLE_MODEL_NAME: nyc_model
+  GCP_MLE_MODEL_VERSION: nyc_model_1
