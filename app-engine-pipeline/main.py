@@ -1,18 +1,32 @@
 import json
 import logging
 import os
+import base64
+import wave
+import requests
 
 import pandas as pd
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import math
 import numpy as np
 from clients.ml_engine import MLEngineClient
+
+from google.cloud import speech
+from google.cloud.speech import enums
+from google.cloud.speech import types
+from google.cloud import texttospeech
+from google.cloud import language
+from google.cloud.language import enums
+from google.cloud.language import types
+from googlemaps import convert
+import googlemaps
 
 app = Flask(__name__)
 
 project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
 mle_model_name = os.getenv("GCP_MLE_MODEL_NAME")
 mle_model_version = os.getenv("GCP_MLE_MODEL_VERSION")
+google_maps_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
 
 print(project_id)
 
@@ -90,6 +104,65 @@ def process_test_data(raw_df):
                       'passenger_count']]
     return test_df
 
+
+def speech_to_text_helper(data):
+    content = base64.decodebytes(data)
+    audio = speech.types.RecognitionAudio(content=content)
+    client = speech.SpeechClient()
+    config = speech.types.RecognitionConfig(
+        encoding=speech.enums.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=16000,
+        language_code='en-US')
+
+    # Detects speech in the audio file
+    response = client.recognize(config, audio)
+    return response.results[0].alternatives[0].transcript
+
+def text_to_speech_helper(text):
+    client = texttospeech.TextToSpeechClient()
+    synthesis_input = texttospeech.types.SynthesisInput(text=text)
+    # Build the voice request, select the language code ("en-US") and the ssml
+    # voice gender ("neutral")
+    voice = texttospeech.types.VoiceSelectionParams(
+        language_code='en-US',
+        ssml_gender=texttospeech.enums.SsmlVoiceGender.NEUTRAL)
+
+    # Select the type of audio file you want returned
+    audio_config = texttospeech.types.AudioConfig(
+        audio_encoding=texttospeech.enums.AudioEncoding.LINEAR16)
+
+    # Perform the text-to-speech request on the text input with the selected
+    # voice parameters and audio file type
+    response = client.synthesize_speech(synthesis_input, voice, audio_config)
+    speech = str(base64.b64encode(response.audio_content).decode("utf-8"))
+    return speech
+
+
+def named_entities_helper(text):
+    client = language.LanguageServiceClient()
+    document = language.types.Document(
+        content=text,
+        type=language.enums.Document.Type.PLAIN_TEXT)
+    entities = client.analyze_entities(document).entities
+    entity_names = []
+    for entity in entities:
+        entity_names.append(entity.name)
+    return entity_names
+
+
+def directions_helper(origin, destination):
+    client = googlemaps.Client(google_maps_api_key)
+    
+    params = {
+        "origin": convert.latlng(origin),
+        "destination": convert.latlng(destination)
+    }
+    response = client._request("/maps/api/directions/json", params).get("routes", [])[0]
+    start_location = response['legs'][0]['start_location']
+    end_location = response['legs'][0]['end_location']
+    return start_location, end_location
+    
+
 @app.route('/')
 def index():
     return "Hello"
@@ -102,6 +175,61 @@ def predict():
     predictors_df = process_test_data(raw_data_df)
     return json.dumps(ml_engine_client.predict(predictors_df.values.tolist()))
 
+
+@app.route('/farePrediction', methods=['POST'])
+def farePrediction():
+    text = speech_to_text_helper(request.data)
+    entity_names = named_entities_helper(text)
+    start_loc, end_loc = directions_helper(entity_names[0], entity_names[1])
+    predict_in = {"pickup_datetime": "2018-11-18 15:05:00 UTC",
+                  "pickup_longitude": start_loc['lng'],
+                  "pickup_latitude": start_loc['lat'],
+                  "dropoff_longitude": end_loc['lng'],
+                  "dropoff_latitude": end_loc['lat'],
+                  "passenger_count": 1}
+    # predict
+    predictors_df = process_test_data(pd.DataFrame([predict_in]))
+    fare_df = ml_engine_client.predict(predictors_df.values.tolist())
+    fare = fare_df[0]
+    output_text = "Your expected fare from " + entity_names[0] + " to " + entity_names[1] + " is $ " + str(round(fare, 2))
+    speech = text_to_speech_helper(output_text)
+    return jsonify(predicted_fare=fare, 
+                   entities=entity_names,
+                   text=output_text,
+                   speech=speech)
+    
+    
+@app.route('/speechToText', methods=['POST'])
+def speechToText():
+    text = speech_to_text_helper(request.data)
+    return jsonify(text=text)
+
+
+@app.route('/textToSpeech', methods=['GET'])
+def textToSpeech():
+    text = request.args.get("text")
+    speech = text_to_speech_helper(text)
+    ret_map = {"speech": speech}
+    return json.dumps(ret_map)
+   
+    
+@app.route('/namedEntities', methods=['GET'])
+def namedEntities():
+    text = request.args.get("text")
+    entity_names = named_entities_helper(text)
+    ret_map = {"entities": entity_names}
+    return json.dumps(ret_map)
+    
+    
+@app.route('/directions', methods=['GET'])
+def directions():
+    origin = request.args.get("origin")
+    destination = request.args.get("destination")
+    start_location, end_location = directions_helper(origin, destination)
+    ret_map = {"start_location": start_location, "end_location": end_location}
+    return json.dumps(ret_map)
+
+    
 @app.errorhandler(500)
 def server_error(e):
     logging.exception('An error occurred during a request.')

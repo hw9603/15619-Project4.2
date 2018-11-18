@@ -6,6 +6,18 @@
       "url":"https://www.geeksforgeeks.org/python-pandas-to_datetime/",
       "code":"I learned how to parse Timestamp information to Date Time object in Python.",
       "description":"<additional information you may find necessary to provide>"
+    },
+    {
+      "title":"Text-to-Speech API Client Libraries",
+      "url":"https://cloud.google.com/text-to-speech/docs/reference/libraries",
+      "code":"I learned how to use text-to-speech API in Python.",
+      "description":"<additional information you may find necessary to provide>"
+    },
+    {
+      "title":"GoogleCloudPlatform/python-docs-samples",
+      "url":"https://github.com/GoogleCloudPlatform/python-docs-samples/blob/master/language/cloud-client/v1/snippets.py",
+      "code":"I learned how to use natural language API in Python.",
+      "description":"<additional information you may find necessary to provide>"
     }
   ],
   "collaborators":[
