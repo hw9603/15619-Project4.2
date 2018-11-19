@@ -18,6 +18,12 @@
       "url":"https://github.com/GoogleCloudPlatform/python-docs-samples/blob/master/language/cloud-client/v1/snippets.py",
       "code":"I learned how to use natural language API in Python.",
       "description":"<additional information you may find necessary to provide>"
+    },
+    {
+      "title":"Speech-to-Text Client Libraries",
+      "url":"https://cloud.google.com/speech-to-text/docs/reference/libraries",
+      "code":"I learned how to use speech-to-text API in Python.",
+      "description":"<additional information you may find necessary to provide>"
     }
   ],
   "collaborators":[
